@@ -35,7 +35,7 @@ python3 --version
 3. Запустите приложение:
 ```
 python main.py
-(или python3 book_tracker.py на macOS/Linux)
+(или python3 main.py на macOS/Linux)
 ```
 ## Примеры использования
 ### **Сценарий 1: Добавление книги**
