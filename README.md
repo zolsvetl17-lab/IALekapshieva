@@ -28,5 +28,5 @@
 
 1. **Клонируйте репозиторий:**
    ```bash
-   git clone https://github.com/ваш_username/currency-converter.git
+   git clone https://github.com/zolsvetl17-lab/currency-converter.git
    cd currency-converter
