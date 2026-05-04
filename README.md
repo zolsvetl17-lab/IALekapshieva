@@ -34,7 +34,7 @@ python3 --version
 ```
 3. Запустите приложение:
 ```
-python book_tracker.py
+python main.py
 (или python3 book_tracker.py на macOS/Linux)
 ```
 ## Примеры использования
