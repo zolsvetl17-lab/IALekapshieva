@@ -1,164 +1,122 @@
 import tkinter as tk
 from tkinter import ttk, messagebox
-import requests
 import json
 import os
-from dotenv import load_dotenv
-from datetime import datetime
 
-# Загрузка переменных окружения
-load_dotenv()
-
-class CurrencyConverter:
+class BookTracker:
     def __init__(self, root):
         self.root = root
-        self.root.title("Currency Converter")
-        self.root.geometry("600x500")
+        self.root.title("Book Tracker")
+        self.books = []
+        self.load_data()
+        
+        self.create_widgets()
+    
+    def create_widgets(self):
+        # Поля ввода
+        tk.Label(self.root, text="Название книги:").grid(row=0, column=0, padx=5, pady=5, sticky="w")
+        self.title_entry = tk.Entry(self.root, width=30)
+        self.title_entry.grid(row=0, column=1, padx=5, pady=5)
 
-        # API ключ из переменных окружения
-        self.api_key = os.getenv("EXCHANGE_RATE_API_KEY")
-        if not self.api_key:
-            messagebox.showerror("Ошибка", "API ключ не найден! Создайте файл .env с EXCHANGE_RATE_API_KEY=ваш_ключ")
+        tk.Label(self.root, text="Автор:").grid(row=1, column=0, padx=5, pady=5, sticky="w")
+        self.author_entry = tk.Entry(self.root, width=30)
+        self.author_entry.grid(row=1, column=1, padx=5, pady=5)
 
-        # Файл для сохранения истории
-        self.history_file = "conversion_history.json"
-        self.history = []
-        self.load_history()
+        tk.Label(self.root, text="Жанр:").grid(row=2, column=0, padx=5, pady=5, sticky="w")
+        self.genre_entry = tk.Entry(self.root, width=30)
+        self.genre_entry.grid(row=2, column=1, padx=5, pady=5)
 
-        self.setup_ui()
-        self.update_currencies()
+        tk.Label(self.root, text="Количество страниц:").grid(row=3, column=0, padx=5, pady=5, sticky="w")
+        self.pages_entry = tk.Entry(self.root, width=30)
+        self.pages_entry.grid(row=3, column=1, padx=5, pady=5)
 
-    def setup_ui(self):
-        # Форма конвертации
-        input_frame = ttk.LabelFrame(self.root, text="Конвертация валют")
-        input_frame.pack(pady=10, padx=20, fill="x")
+        # Кнопка добавления
+        self.add_button = tk.Button(self.root, text="Добавить книгу", command=self.add_book)
+        self.add_button.grid(row=4, column=0, columnspan=2, pady=10)
 
-        # Выбор валюты «из»
-        ttk.Label(input_frame, text="Из:").grid(row=0, column=0, padx=5, pady=5, sticky="w")
-        self.from_currency = ttk.Combobox(input_frame, width=10)
-        self.from_currency.grid(row=0, column=1, padx=5, pady=5)
+        # Таблица для отображения книг
+        self.tree = ttk.Treeview(self.root, columns=("Title", "Author", "Genre", "Pages"), show="headings")
+        self.tree.heading("Title", text="Название")
+        self.tree.heading("Author", text="Автор")
+        self.tree.heading("Genre", text="Жанр")
+        self.tree.heading("Pages", text="Страниц")
+        self.tree.grid(row=5, column=0, columnspan=2, padx=5, pady=5)
 
-        # Выбор валюты «в»
-        ttk.Label(input_frame, text="В:").grid(row=0, column=2, padx=5, pady=5, sticky="w")
-        self.to_currency = ttk.Combobox(input_frame, width=10)
-        self.to_currency.grid(row=0, column=3, padx=5, pady=5)
+        # Фильтры
+        tk.Label(self.root, text="Фильтр по жанру:").grid(row=6, column=0, padx=5, pady=5, sticky="w")
+        self.genre_filter = ttk.Combobox(self.root, values=["Все жанры"] + list(set(book["genre"] for book in self.books)))
+        self.genre_filter.set("Все жанры")
+        self.genre_filter.grid(row=6, column=1, padx=5, pady=5)
+        
+        tk.Label(self.root, text="Фильтр страниц (>):").grid(row=7, column=0, padx=5, pady=5, sticky="w")
+        self.pages_filter = tk.Entry(self.root, width=10)
+        self.pages_filter.insert(0, "0")
+        self.pages_filter.grid(row=7, column=1, padx=5, pady=5, sticky="w")
 
-        # Поле ввода суммы
-        ttk.Label(input_frame, text="Сумма:").grid(row=1, column=0, padx=5, pady=5, sticky="w")
-        self.amount_entry = ttk.Entry(input_frame, width=15)
-        self.amount_entry.grid(row=1, column=1, padx=5, pady=5)
+        self.filter_button = tk.Button(self.root, text="Применить фильтры", command=self.apply_filters)
+        self.filter_button.grid(row=8, column=0, columnspan=2, pady=10)
+    def add_book(self):
+        title = self.title_entry.get().strip()
+        author = self.author_entry.get().strip()
+        genre = self.genre_entry.get().strip()
+        pages_text = self.pages_entry.get().strip()
 
-        # Кнопка конвертации
-        convert_btn = ttk.Button(input_frame, text="Конвертировать", command=self.convert_currency)
-        convert_btn.grid(row=1, column=2, columnspan=2, pady=10)
-
-        # Результат конвертации
-        result_frame = ttk.LabelFrame(self.root, text="Результат")
-        result_frame.pack(pady=10, padx=20, fill="x")
-        self.result_label = ttk.Label(result_frame, text="", font=("Arial", 12))
-        self.result_label.pack(pady=10)
-
-        # История конвертаций
-        history_frame = ttk.LabelFrame(self.root, text="История конвертаций")
-        history_frame.pack(pady=10, padx=20, fill="both", expand=True)
-
-        columns = ("Дата", "Сумма", "Из", "В", "Результат")
-        self.history_tree = ttk.Treeview(history_frame, columns=columns, show="headings", height=8)
-
-        for col in columns:
-            self.history_tree.heading(col, text=col)
-            self.history_tree.column(col, width=100)
-
-        self.history_tree.pack(fill="both", expand=True, padx=10, pady=10)
-
-        self.update_history_list()
-
-    def update_currencies(self):
-        try:
-            response = requests.get("https://api.exchangerate-api.com/v4/latest/USD")
-            if response.status_code == 200:
-                data = response.json()
-                currencies = list(data["rates"].keys())
-                self.from_currency["values"] = currencies
-                self.to_currency["values"] = currencies
-                # Устанавливаем значения по умолчанию
-                self.from_currency.set("USD")
-                self.to_currency.set("EUR")
-        except Exception as e:
-            messagebox.showerror("Ошибка", f"Не удалось загрузить курсы валют: {str(e)}")
-
-    def validate_input(self, amount_str):
-        try:
-            amount = float(amount_str)
-            if amount <= 0:
-                messagebox.showerror("Ошибка", "Сумма должна быть положительным числом!")
-                return False, 0
-            return True, amount
-        except ValueError:
-            messagebox.showerror("Ошибка", "Введите корректное число!")
-            return False, 0
-
-    def convert_currency(self):
-        from_curr = self.from_currency.get()
-        to_curr = self.to_currency.get()
-        amount_str = self.amount_entry.get().strip()
-
-        is_valid, amount = self.validate_input(amount_str)
-        if not is_valid:
+        # Проверка на пустые поля
+        if not title or not author or not genre:
+            messagebox.showerror("Ошибка", "Все поля должны быть заполнены!")
             return
 
+        # Проверка количества страниц
         try:
-            # Получаем курс через API
-            response = requests.get(f"https://api.exchangerate-api.com/v4/latest/{from_curr}")
-            if response.status_code != 200:
-                messagebox.showerror("Ошибка", "Не удалось получить курс валют!")
-                return
+            pages = int(pages_text)
+            if pages <= 0:
+                raise ValueError
+        except ValueError:
+            messagebox.showerror("Ошибка", "Количество страниц должно быть положительным числом!")
+            return
 
-            data = response.json()
-            rate = data["rates"][to_curr]
-            result = amount * rate
+        # Добавление книги
+        book = {"title": title, "author": author, "genre": genre, "pages": pages}
+        self.books.append(book)
+        self.update_table()
+        self.save_data()
 
-            # Отображаем результат
-            self.result_label.config(text=f"{amount} {from_curr} = {result:.2f} {to_curr}")
+        # Очистка полей ввода
+        self.title_entry.delete(0, tk.END)
+        self.author_entry.delete(0, tk.END)
+        self.genre_entry.delete(0, tk.END)
+        self.pages_entry.delete(0, tk.END)
+    def apply_filters(self):
+        genre_filter = self.genre_filter.get()
+        try:
+            pages_filter = int(self.pages_filter.get())
+        except ValueError:
+            pages_filter = 0
 
-            # Сохраняем в историю
-            record = {
-                "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                "amount": amount,
-                "from": from_curr,
-                "to": to_curr,
-                "result": round(result, 2)
-            }
-            self.history.append(record)
-            self.save_history()
-            self.update_history_list()
-        except KeyError:
-            messagebox.showerror("Ошибка", "Некорректные валюты!")
-        except Exception as e:
-            messagebox.showerror("Ошибка", f"Произошла ошибка: {str(e)}")
+        filtered_books = self.books
+        if genre_filter != "Все жанры":
+            filtered_books = [book for book in filtered_books if book["genre"] == genre_filter]
+        filtered_books = [book for book in filtered_books if book["pages"] > pages_filter]
 
-    def load_history(self):
-        if os.path.exists(self.history_file):
-            with open(self.history_file, "r", encoding="utf-8") as f:
-                self.history = json.load(f)
+        self.update_table(filtered_books)
+    def save_data(self):
+        with open("books.json", "w", encoding="utf-8") as f:
+            json.dump(self.books, f, ensure_ascii=False, indent=4)
+
+    def load_data(self):
+        if os.path.exists("books.json"):
+            with open("books.json", "r", encoding="utf-8") as f:
+                self.books = json.load(f)
         else:
-            self.history = []
+            self.books = []
 
-    def save_history(self):
-        with open(self.history_file, "w", encoding="utf-8") as f:
-            json.dump(self.history, f, ensure_ascii=False, indent=2)
-
-    def update_history_list(self):
-        for item in self.history_tree.get_children():
-            self.history_tree.delete(item)
-
-        for record in reversed(self.history[-10:]):  # Последние 10 записей
-            self.history_tree.insert("", "end", values=(
-                record["date"], record["amount"],
-                record["from"], record["to"], record["result"]
-            ))
-
+    def update_table(self, books=None):
+        for item in self.tree.get_children():
+            self.tree.delete(item)
+        target_books = books if books is not None else self.books
+        for book in target_books:
+            self.tree.insert("", "end", values=(book["title"], book["author"], book["genre"], book["pages"]))
 if __name__ == "__main__":
     root = tk.Tk()
-    app = CurrencyConverter(root)
+    app = BookTracker(root)
     root.mainloop()
